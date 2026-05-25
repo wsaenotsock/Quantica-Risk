@@ -5,6 +5,7 @@ import { useResultsStore } from '@/store/resultsStore';
 import { useModelStore } from '@/store/modelStore';
 import { formatDuration } from '@/lib/utils/format';
 import { aggregateResults } from '@/lib/utils/aggregation';
+import { QuanticaLogo } from '@/components/brand/QuanticaLogo';
 
 export interface ReportOptions {
   showExecSummary: boolean;
@@ -142,10 +143,9 @@ export default function AnalysisReport({
     <div className="analysis-report print-content" style={{ padding: '40px 60px', background: 'white', color: 'black', minHeight: '100%', fontFamily: '"Inter", "Segoe UI", sans-serif' }}>
       <header style={{ borderBottom: '3px solid #333', marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <div style={{ width: '40px', height: '40px', background: '#333', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '20px' }}>N</div>
+          <QuanticaLogo theme="light" style={{ height: '55px', width: '100px' }} />
           <div>
             <h1 style={{ margin: 0, fontSize: '24px', letterSpacing: '-0.5px', textTransform: 'uppercase' }}>{t.title}</h1>
-            <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#666', fontWeight: 500 }}>QUANTICA RISK • ANALYTICAL INTELLIGENCE</p>
           </div>
         </div>
         <div style={{ textAlign: 'right', fontSize: '11px', color: '#444' }}>

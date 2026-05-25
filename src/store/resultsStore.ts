@@ -5,12 +5,15 @@ import type { QuantificationResult, PRAModel, ImportanceMeasure } from '@/lib/ty
 
 interface ResultsState {
   results: Record<string, QuantificationResult>; // targetId -> Result
+  aggregatedTargetIds: string[]; // List of target IDs to include in the aggregated view
   activeResultId: string | null;
   isComputing: boolean;
   error: string | null;
 
   setResult: (targetId: string, result: QuantificationResult) => void;
   setActiveResult: (targetId: string | null) => void;
+  setAggregatedTargetIds: (targetIds: string[]) => void;
+  toggleAggregatedTargetId: (targetId: string) => void;
   setComputing: (computing: boolean) => void;
   setError: (error: string | null) => void;
   clear: () => void;
@@ -18,20 +21,33 @@ interface ResultsState {
 
 export const useResultsStore = create<ResultsState>((set) => ({
   results: {},
+  aggregatedTargetIds: [],
   activeResultId: null,
   isComputing: false,
   error: null,
 
-  setResult: (targetId, result) => set((state) => ({ 
-    results: { ...state.results, [targetId]: result },
-    activeResultId: targetId,
-    isComputing: false, 
-    error: null 
-  })),
+  setResult: (targetId, result) => set((state) => {
+    const newAggregated = state.aggregatedTargetIds.includes(targetId) 
+      ? state.aggregatedTargetIds 
+      : [...state.aggregatedTargetIds, targetId];
+    return {
+      results: { ...state.results, [targetId]: result },
+      aggregatedTargetIds: newAggregated,
+      activeResultId: targetId,
+      isComputing: false, 
+      error: null 
+    };
+  }),
   setActiveResult: (targetId) => set({ activeResultId: targetId }),
+  setAggregatedTargetIds: (targetIds) => set({ aggregatedTargetIds: targetIds }),
+  toggleAggregatedTargetId: (targetId) => set((state) => ({
+    aggregatedTargetIds: state.aggregatedTargetIds.includes(targetId)
+      ? state.aggregatedTargetIds.filter(id => id !== targetId)
+      : [...state.aggregatedTargetIds, targetId]
+  })),
   setComputing: (computing) => set({ isComputing: computing }),
   setError: (error) => set({ error, isComputing: false }),
-  clear: () => set({ results: {}, activeResultId: null, error: null, isComputing: false }),
+  clear: () => set({ results: {}, aggregatedTargetIds: [], activeResultId: null, error: null, isComputing: false }),
 }));
 
 // --- Web Worker Integration ---

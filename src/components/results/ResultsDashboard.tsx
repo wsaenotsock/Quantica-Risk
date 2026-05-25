@@ -17,6 +17,7 @@ type ImportanceTab = 'fv' | 'raw' | 'rrw' | 'birnbaum';
 
 export default function ResultsDashboard({ locale = 'ja' }: ResultsDashboardProps) {
   const results = useResultsStore((s) => s.results);
+  const aggregatedTargetIds = useResultsStore((s) => s.aggregatedTargetIds);
   const activeResultId = useResultsStore((s) => s.activeResultId);
   const setActiveResult = useResultsStore((s) => s.setActiveResult);
   const isComputing = useResultsStore((s) => s.isComputing);
@@ -24,10 +25,14 @@ export default function ResultsDashboard({ locale = 'ja' }: ResultsDashboardProp
   const result = useMemo(() => {
     if (!activeResultId) return null;
     if (activeResultId === '__total_aggregated__') {
-      return aggregateResults(Object.values(results));
+      const selectedResults = Object.entries(results)
+        .filter(([id]) => aggregatedTargetIds.includes(id))
+        .map(([_, r]) => r);
+      if (selectedResults.length === 0) return null;
+      return aggregateResults(selectedResults);
     }
     return results[activeResultId];
-  }, [activeResultId, results]);
+  }, [activeResultId, results, aggregatedTargetIds]);
 
   const isAggregated = activeResultId === '__total_aggregated__';
   const model = useModelStore((s) => s.model);

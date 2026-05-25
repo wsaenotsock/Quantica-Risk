@@ -575,7 +575,7 @@ export default function Home() {
             <QuanticaLogo theme={theme} style={{ height: '70px', width: '126px', minHeight: '70px', minWidth: '126px', flexShrink: 0 }} />
           </div>
           <span className="app-header__subtitle" style={{ marginLeft: '12px', borderLeft: '1px solid var(--border-default)', paddingLeft: '12px' }}>
-            {locale === 'ja' ? '静的PRA解析' : 'Static PRA Analysis'}
+            {locale === 'ja' ? 'Browser-Based PRA Engine' : 'Browser-Based PRA Engine'}
           </span>
           {isComputing && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

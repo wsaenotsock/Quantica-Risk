@@ -56,6 +56,8 @@ export default function QuantificationPanel({ locale, onNavigateToResults }: Qua
   const results = useResultsStore(s => s.results || {});
   const activeResultId = useResultsStore(s => s.activeResultId);
   const setActiveResult = useResultsStore(s => s.setActiveResult);
+  const aggregatedTargetIds = useResultsStore(s => s.aggregatedTargetIds);
+  const toggleAggregatedTargetId = useResultsStore(s => s.toggleAggregatedTargetId);
   const setComputing = useResultsStore(s => s.setComputing);
   const setResult = useResultsStore(s => s.setResult);
   const setError = useResultsStore(s => s.setError);
@@ -181,7 +183,18 @@ export default function QuantificationPanel({ locale, onNavigateToResults }: Qua
           </div>
         </div>
         
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {hasResult && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', marginRight: '4px', color: 'var(--text-secondary)' }}>
+              <input 
+                type="checkbox" 
+                checked={aggregatedTargetIds.includes(target.id)} 
+                onChange={() => toggleAggregatedTargetId(target.id)} 
+                style={{ width: '14px', height: '14px' }}
+              />
+              {locale === 'ja' ? '統合対象' : 'Include'}
+            </label>
+          )}
           {hasResult && (
             <button 
               className={`btn btn--sm ${isActive ? 'btn--primary' : 'btn--secondary'}`}
@@ -497,7 +510,7 @@ export default function QuantificationPanel({ locale, onNavigateToResults }: Qua
                     <span>📊</span> {locale === 'ja' ? '全解析結果の統合' : 'Consolidated Total Results'}
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    {locale === 'ja' ? `${Object.keys(results).length}件の解析結果を合成して表示します。` : `Aggregating all ${Object.keys(results).length} active results.`}
+                    {locale === 'ja' ? `選択された ${aggregatedTargetIds.length}件 の解析結果を合成して表示します。` : `Aggregating ${aggregatedTargetIds.length} selected results.`}
                   </div>
                 </div>
                 <button 

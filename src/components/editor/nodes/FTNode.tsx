@@ -321,6 +321,7 @@ const FTNode = memo((props: any) => {
               padding: '2px 6px',
               borderRadius: '10px',
               boxShadow: flagHovered ? 'var(--shadow-lg)' : 'var(--shadow-md)',
+              opacity: data.isFlagGroupActive ? 1 : 0.4,
               zIndex: 30,
               border: '2px solid var(--bg-elevated)',
               display: 'flex',
@@ -330,7 +331,7 @@ const FTNode = memo((props: any) => {
               cursor: 'pointer',
               transform: flagHovered ? 'scale(1.15)' : 'scale(1)',
               transition: 'all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-              filter: flagHovered ? 'brightness(1.1)' : 'none'
+              filter: (data.isFlagGroupActive ? 'none' : 'grayscale(1) ') + (flagHovered ? 'brightness(1.1)' : '')
             }}
             title={data.locale === 'en' ? 'Click to navigate to Flag settings' : 'クリックでフラグ設定へ移動'}
           >
@@ -357,13 +358,14 @@ const FTNode = memo((props: any) => {
               padding: '2px 6px',
               borderRadius: '10px',
               boxShadow: recHovered ? 'var(--shadow-lg)' : 'var(--shadow-md)',
+              opacity: data.isRecoveryGroupActive ? 1 : 0.4,
               zIndex: 30,
               border: '2px solid var(--bg-elevated)',
               whiteSpace: 'nowrap',
               cursor: 'pointer',
               transform: recHovered ? 'scale(1.15)' : 'scale(1)',
               transition: 'all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-              filter: recHovered ? 'brightness(1.1)' : 'none'
+              filter: (data.isRecoveryGroupActive ? 'none' : 'grayscale(1) ') + (recHovered ? 'brightness(1.1)' : '')
             }}
             title={data.locale === 'en' ? 'Click to navigate to Recovery rules' : 'クリックでリカバリルールへ移動'}
           >

@@ -261,15 +261,18 @@ export default function FaultTreeCanvas({
     if (!ft) return { nodes: [], edges: [] };
 
     let activeFlagGroup = model.flagGroups?.find(g => g.id === model.activeFlagGroupId);
+    const isFlagGroupActive = !!activeFlagGroup;
     if (!activeFlagGroup && model.flagGroups && model.flagGroups.length > 0) {
       activeFlagGroup = model.flagGroups[0];
     }
     
     // Resolve active recovery rules based on activeRecoveryGroupId
     let recoveryRules = model.recoveryRules || [];
+    let isRecoveryGroupActive = false;
     if (model.activeRecoveryGroupId) {
       const activeGroup = model.recoveryGroups?.find(g => g.id === model.activeRecoveryGroupId);
       recoveryRules = activeGroup ? activeGroup.rules || [] : [];
+      isRecoveryGroupActive = !!activeGroup;
     } else if (model.recoveryGroups && model.recoveryGroups.length > 0) {
       recoveryRules = model.recoveryGroups[0]?.rules || [];
     }
@@ -338,7 +341,9 @@ export default function FaultTreeCanvas({
             ...lastNode.data,
             isFlagged: !!gateFlag,
             flagState: gateFlag?.state,
-            isRecovery: isGateInRecovery
+            isFlagGroupActive,
+            isRecovery: isGateInRecovery,
+            isRecoveryGroupActive
           };
         }
 
@@ -437,12 +442,14 @@ export default function FaultTreeCanvas({
               flagState: activeFlagGroup?.items.find(item => 
                 item.eventId === be.id || (beAny.eventId && item.eventId === beAny.eventId)
               )?.state,
+              isFlagGroupActive,
               isRecovery: recoveryRules.some(r => 
                 r.condition.includes(be.id) || 
                 (beAny.eventId && r.condition.includes(beAny.eventId)) ||
                 r.targetEventId === be.id ||
                 (beAny.eventId && r.targetEventId === beAny.eventId)
               ),
+              isRecoveryGroupActive,
             },
           });
         }

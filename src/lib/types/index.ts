@@ -361,6 +361,8 @@ export interface FTNodeData extends Record<string, unknown> {
   failureType?: 'time' | 'demand';
   isFlagged?: boolean;
   flagState?: boolean;
+  isFlagGroupActive?: boolean;
   isRecovery?: boolean;
+  isRecoveryGroupActive?: boolean;
   isCCF?: boolean;
 }

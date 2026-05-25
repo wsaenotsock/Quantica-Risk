@@ -322,7 +322,41 @@ export default function PropertyPanel({
           </div>
         </div>
 
-        {basicEvent.eventType !== 'transferGate' && (
+        {basicEvent.eventType === 'houseEvent' && (
+          <div className="property-panel__section animate-slideIn">
+            <div className="property-panel__section-title">
+              {locale === 'ja' ? '論理スイッチ設定' : 'Logic Switch Settings'}
+            </div>
+            <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label className="form-label">{locale === 'ja' ? 'ハウス事象状態 (True/False)' : 'House Event State'}</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className={`btn ${basicEvent.probability === 1 ? 'btn--primary' : 'btn--secondary'}`}
+                  style={{ flex: 1 }}
+                  onClick={() => updateBasicEvent({ ...basicEvent, probability: 1, failureRate: 1, failureType: 'demand', demands: 1, distribution: { type: 'point' } })}
+                >
+                  {locale === 'ja' ? 'ON (True: P=1)' : 'ON (True: P=1)'}
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${basicEvent.probability === 0 ? 'btn--danger' : 'btn--secondary'}`}
+                  style={{ flex: 1 }}
+                  onClick={() => updateBasicEvent({ ...basicEvent, probability: 0, failureRate: 0, failureType: 'demand', demands: 1, distribution: { type: 'point' } })}
+                >
+                  {locale === 'ja' ? 'OFF (False: P=0)' : 'OFF (False: P=0)'}
+                </button>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px', lineHeight: '1.4' }}>
+                {locale === 'ja' 
+                  ? 'ハウス事象は発生確率が1.0(必ず発生)または0.0(絶対発生しない)に固定された論理スイッチとして機能します。ランダムな故障分布は持ちません。' 
+                  : 'House events act as logic switches fixed at probability 1.0 (True) or 0.0 (False). They do not have random failure distributions.'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {basicEvent.eventType !== 'transferGate' && basicEvent.eventType !== 'houseEvent' && (
           <>
             <div className="property-panel__section">
               <div className="property-panel__section-title">
