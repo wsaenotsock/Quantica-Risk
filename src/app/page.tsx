@@ -40,6 +40,7 @@ export default function Home() {
   const [dataViewTab, setDataViewTab] = useState<'faultTrees' | 'eventTrees' | 'basicEvents' | 'parameters' | 'ccf' | 'initiatingEvents' | 'endStates' | 'flags' | 'recovery'>('basicEvents');
   const [locale, setLocale] = useState<Locale>('ja');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeRawId, setSelectedNodeRawId] = useState<string | null>(null);
   const [selectedNodeType, setSelectedNodeType] = useState<string | null>(null);
   const [showSaveToast, setShowSaveToast] = useState(false);
   const [showProjectManager, setShowProjectManager] = useState(false);
@@ -54,15 +55,18 @@ export default function Home() {
   });
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [modal, setModal] = useState<{
     show: boolean,
     type: 'new' | 'rename' | 'delete' | 'deleteNode' | 'deleteEdge',
     value: string,
     title: string,
     nodeId?: string,
+    rawNodeId?: string,
     nodeType?: string,
     edgeId?: string,
-    onConfirm: (val: string) => void
+    onConfirm: (val: string, deleteMode?: 'local' | 'global') => void
   }>({
     show: false,
     type: 'new',
@@ -210,9 +214,10 @@ export default function Home() {
     loadFromLocalStorage();
   }, [loadFromLocalStorage]);
 
-  const onNodeSelect = useCallback((nodeId: string | null, nodeType: string | null) => {
-    setSelectedNodeId(nodeId);
-    setSelectedNodeType(nodeType);
+  const onNodeSelect = useCallback((id: string | null, type: string | null, rawId?: string | null) => {
+    setSelectedNodeId(id);
+    setSelectedNodeType(type);
+    setSelectedNodeRawId(rawId || id);
   }, []);
 
   // Run BDD/ET quantification via Worker
@@ -366,16 +371,23 @@ export default function Home() {
           show: true,
           type: 'deleteNode',
           title: locale === 'ja' ? 'ノードの削除' : 'Delete Node',
-          value: '',
+          value: (selectedNodeRawId && selectedNodeRawId.includes('::')) ? 'local' : 'global',
           nodeId: selectedNodeId,
+          rawNodeId: selectedNodeRawId || undefined,
           nodeType: selectedNodeType || 'basicEvent',
-          onConfirm: () => {
+          onConfirm: (val: string, deleteMode?: 'local' | 'global') => {
             if (['andGate', 'orGate', 'atleastGate', 'topEvent'].includes(selectedNodeType || '')) {
               if (selectedFaultTreeId) removeGate(selectedFaultTreeId, selectedNodeId);
             } else {
-              removeBasicEvent(selectedNodeId);
+              if (deleteMode === 'local' && selectedNodeRawId && selectedNodeRawId.includes('::') && selectedFaultTreeId) {
+                const parentGateId = selectedNodeRawId.split('::')[0];
+                useModelStore.getState().removeChildFromGate(selectedFaultTreeId, parentGateId, selectedNodeId);
+              } else {
+                removeBasicEvent(selectedNodeId);
+              }
             }
             setSelectedNodeId(null);
+            setSelectedNodeRawId(null);
             setSelectedNodeType(null);
           }
         });
@@ -505,22 +517,29 @@ export default function Home() {
     });
   }, [locale, selectedEventTreeId]);
 
-  const handleNodeDeleteRequest = useCallback((nodeId: string, nodeType: string) => {
+  const handleNodeDeleteRequest = useCallback((nodeId: string, nodeType: string, rawNodeId?: string) => {
     setModal({
       show: true,
       type: 'deleteNode',
       title: locale === 'ja' ? 'ノードの削除' : 'Delete Node',
-      value: '',
+      value: (rawNodeId && rawNodeId.includes('::')) ? 'local' : 'global',
       nodeId,
+      rawNodeId,
       nodeType,
-      onConfirm: () => {
+      onConfirm: (val: string, deleteMode?: 'local' | 'global') => {
         if (['andGate', 'orGate', 'atleastGate', 'topEvent'].includes(nodeType)) {
           if (selectedFaultTreeId) removeGate(selectedFaultTreeId, nodeId);
         } else {
-          removeBasicEvent(nodeId);
+          if (deleteMode === 'local' && rawNodeId && rawNodeId.includes('::') && selectedFaultTreeId) {
+            const parentGateId = rawNodeId.split('::')[0];
+            useModelStore.getState().removeChildFromGate(selectedFaultTreeId, parentGateId, nodeId);
+          } else {
+            removeBasicEvent(nodeId);
+          }
         }
         if (selectedNodeId === nodeId) {
           setSelectedNodeId(null);
+          setSelectedNodeRawId(null);
           setSelectedNodeType(null);
         }
       }
@@ -785,79 +804,129 @@ export default function Home() {
       </header>
 
       {/* ===== Main Content ===== */}
-      <main className="app-main">
+      <main className="app-main" style={{ position: 'relative' }}>
         {/* Left Sidebar (Selector + Toolbox) */}
         {(viewMode === 'editor' || viewMode === 'split' || viewMode === 'et_editor') && (
-          <aside className="toolbox">
-            {/* FT/ET Selector Section */}
-            <div className="toolbox__section" style={{ borderBottom: '1px solid var(--border-default)' }}>
-              <div className="toolbox__section-title">
-                {editorType === 'ET' ? (locale === 'ja' ? 'Event Tree 選択' : 'Event Tree Selector') : (locale === 'ja' ? 'Fault Tree 選択' : 'Fault Tree Selector')}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
-                <input 
-                  type="text" 
-                  className="form-input form-input--sm" 
-                  placeholder={locale === 'ja' ? 'モデルを検索...' : 'Search models...'}
-                  value={modelSearchQuery}
-                  onChange={(e) => setModelSearchQuery(e.target.value)}
-                  style={{ width: '100%', fontSize: '12px' }}
-                />
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <select
-                    className="form-select"
-                    style={{ flex: 1, fontSize: '12px', height: '32px' }}
-                    value={editorType === 'ET' ? (selectedEventTreeId ?? '') : (selectedFaultTreeId ?? '')}
-                    onChange={(e) => {
-                      if (editorType === 'ET') {
-                        selectEventTree(e.target.value);
-                      } else {
-                        selectFaultTree(e.target.value);
-                      }
-                    }}
-                  >
-                    {editorType === 'ET' ? (
-                      model.eventTrees
-                        ?.filter(et => et.name.toLowerCase().includes(modelSearchQuery.toLowerCase()))
-                        .map((et) => (
-                          <option key={et.id} value={et.id}>{et.name}</option>
-                        ))
-                    ) : (
-                      model.faultTrees
-                        ?.filter(ft => ft.name.toLowerCase().includes(modelSearchQuery.toLowerCase()))
-                        .map((ft) => (
-                          <option key={ft.id} value={ft.id}>{ft.name}</option>
-                        ))
-                    )}
-                  </select>
-                <button className="btn btn--secondary btn--sm" style={{ padding: '0 8px', minWidth: '32px' }} onClick={editorType === 'ET' ? handleNewET : handleNewFT} title={locale === 'ja' ? '新規作成' : 'New'}>+</button>
-                <button className="btn btn--secondary btn--sm" style={{ padding: '0 8px', minWidth: '32px' }} onClick={editorType === 'ET' ? handleRenameET : handleRenameFT} title={locale === 'ja' ? '名称変更' : 'Rename'}>✎</button>
-                <button className="btn btn--secondary btn--sm" style={{ padding: '0 8px', minWidth: '32px', color: 'var(--accent-red)' }} onClick={editorType === 'ET' ? handleDeleteET : handleDeleteFT} title={locale === 'ja' ? '削除' : 'Delete'}>×</button>
-              </div>
-              </div>
-            </div>
-
-            {/* Toolbox (only for FT) */}
-            {editorType === 'FT' && (
-              <ToolboxPanel locale={locale} />
-            )}
-            
-            {/* ET Help Tips */}
-            {editorType === 'ET' && (
-              <div className="toolbox__section">
+          <div style={{ position: 'relative', display: 'flex', height: '100%', flexShrink: 0 }}>
+            <aside className="toolbox" style={{
+              width: leftPanelCollapsed ? '0px' : 'var(--sidebar-width)',
+              minWidth: leftPanelCollapsed ? '0px' : 'var(--sidebar-width)',
+              borderRight: leftPanelCollapsed ? 'none' : '1px solid var(--border-default)',
+              overflow: 'hidden',
+              transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease',
+              opacity: leftPanelCollapsed ? 0 : 1
+            }}>
+              {/* FT/ET Selector Section */}
+              <div className="toolbox__section" style={{ borderBottom: '1px solid var(--border-default)' }}>
                 <div className="toolbox__section-title">
-                  {locale === 'ja' ? '操作ヒント' : 'Tips'}
+                  {editorType === 'ET' ? (locale === 'ja' ? 'Event Tree 選択' : 'Event Tree Selector') : (locale === 'ja' ? 'Fault Tree 選択' : 'Fault Tree Selector')}
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: 1.8 }}>
-                  <div>📌 {locale === 'ja' ? 'シーケンスをクリックして分岐編集' : 'Click sequence to edit branches'}</div>
-                  <div>🖱️ {locale === 'ja' ? 'パスをクリックで分岐を追加・削除' : 'Click path to add/remove branches'}</div>
-                  <div>➕ {locale === 'ja' ? 'ヘッダーを右クリックで列の挿入・削除' : 'Right-click header to insert/remove columns'}</div>
-                  <div>⌨️ {locale === 'ja' ? 'Ctrl+S:保存 / Ctrl+Z:元に戻す / Ctrl+Y:やり直し' : 'Ctrl+S:Save / Ctrl+Z:Undo / Ctrl+Y:Redo'}</div>
-                  <div>📸 {locale === 'ja' ? '右上のボタンでSVG書き出し' : 'SVG export button at top-right'}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
+                  <input 
+                    type="text" 
+                    className="form-input form-input--sm" 
+                    placeholder={locale === 'ja' ? 'モデルを検索...' : 'Search models...'}
+                    value={modelSearchQuery}
+                    onChange={(e) => setModelSearchQuery(e.target.value)}
+                    style={{ width: '100%', fontSize: '12px' }}
+                  />
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <select
+                      className="form-select"
+                      style={{ flex: 1, fontSize: '12px', height: '32px' }}
+                      value={editorType === 'ET' ? (selectedEventTreeId ?? '') : (selectedFaultTreeId ?? '')}
+                      onChange={(e) => {
+                        if (editorType === 'ET') {
+                          selectEventTree(e.target.value);
+                        } else {
+                          selectFaultTree(e.target.value);
+                        }
+                      }}
+                    >
+                      {editorType === 'ET' ? (
+                        model.eventTrees
+                          ?.filter(et => et.name.toLowerCase().includes(modelSearchQuery.toLowerCase()))
+                          .map((et) => (
+                            <option key={et.id} value={et.id}>{et.name}</option>
+                          ))
+                      ) : (
+                        model.faultTrees
+                          ?.filter(ft => ft.name.toLowerCase().includes(modelSearchQuery.toLowerCase()))
+                          .map((ft) => (
+                            <option key={ft.id} value={ft.id}>{ft.name}</option>
+                          ))
+                      )}
+                    </select>
+                  <button className="btn btn--secondary btn--sm" style={{ padding: '0 8px', minWidth: '32px' }} onClick={editorType === 'ET' ? handleNewET : handleNewFT} title={locale === 'ja' ? '新規作成' : 'New'}>+</button>
+                  <button className="btn btn--secondary btn--sm" style={{ padding: '0 8px', minWidth: '32px' }} onClick={editorType === 'ET' ? handleRenameET : handleRenameFT} title={locale === 'ja' ? '名称変更' : 'Rename'}>✎</button>
+                  <button className="btn btn--secondary btn--sm" style={{ padding: '0 8px', minWidth: '32px', color: 'var(--accent-red)' }} onClick={editorType === 'ET' ? handleDeleteET : handleDeleteFT} title={locale === 'ja' ? '削除' : 'Delete'}>×</button>
+                </div>
                 </div>
               </div>
-            )}
-          </aside>
+
+              {/* Toolbox (only for FT) */}
+              {editorType === 'FT' && (
+                <ToolboxPanel locale={locale} />
+              )}
+              
+              {/* ET Help Tips */}
+              {editorType === 'ET' && (
+                <div className="toolbox__section">
+                  <div className="toolbox__section-title">
+                    {locale === 'ja' ? '操作ヒント' : 'Tips'}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: 1.8 }}>
+                    <div>📌 {locale === 'ja' ? 'シーケンスをクリックして分岐編集' : 'Click sequence to edit branches'}</div>
+                    <div>🖱️ {locale === 'ja' ? 'パスをクリックで分岐を追加・削除' : 'Click path to add/remove branches'}</div>
+                    <div>➕ {locale === 'ja' ? 'ヘッダーを右クリックで列の挿入・削除' : 'Right-click header to insert/remove columns'}</div>
+                    <div>⌨️ {locale === 'ja' ? 'Ctrl+S:保存 / Ctrl+Z:元に戻す / Ctrl+Y:やり直し' : 'Ctrl+S:Save / Ctrl+Z:Undo / Ctrl+Y:Redo'}</div>
+                    <div>📸 {locale === 'ja' ? '右上のボタンでSVG書き出し' : 'SVG export button at top-right'}</div>
+                  </div>
+                </div>
+              )}
+            </aside>
+            <button
+              onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+              style={{
+                position: 'absolute',
+                right: '-20px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                zIndex: 10,
+                width: '20px',
+                height: '48px',
+                borderRadius: '0 8px 8px 0',
+                background: 'rgba(99, 102, 241, 0.05)',
+                border: '1px solid rgba(99, 102, 241, 0.2)',
+                borderLeft: 'none',
+                backdropFilter: 'blur(4px)',
+                color: 'rgba(255, 255, 255, 0.6)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'right 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s, color 0.2s, border-color 0.2s',
+                boxShadow: 'none',
+                fontSize: '10px',
+                outline: 'none'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.95)';
+                e.currentTarget.style.color = '#ffffff';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                e.currentTarget.style.boxShadow = '0 0 12px rgba(99, 102, 241, 0.6)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.05)';
+                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)';
+                e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.2)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+              title={leftPanelCollapsed ? (locale === 'ja' ? 'パネルを展開' : 'Expand Panel') : (locale === 'ja' ? 'パネルを折りたたむ' : 'Collapse Panel')}
+            >
+              {leftPanelCollapsed ? '▶' : '◀'}
+            </button>
+          </div>
         )}
 
         {/* FT Canvas */}
@@ -899,39 +968,94 @@ export default function Home() {
           </div>
         )}
 
-        {/* Results Panel */}
         {/* Sidebar (Property Panel + Validation) */}
         {(viewMode === 'editor' || viewMode === 'et_editor' || (viewMode === 'split' && selectedNodeId)) && (
-          <div style={{
-            width: 320,
-            display: 'flex',
-            flexDirection: 'column',
-            borderLeft: '1px solid var(--border-default)',
-            background: 'var(--bg-primary)'
-          }}>
-            <div style={{ flex: '0 1 auto', overflowY: 'auto', borderBottom: '1px solid var(--border-default)' }}>
-              {(viewMode === 'editor' || (viewMode === 'split' && editorType === 'FT')) && (
-                <PropertyPanel
-                  selectedNodeId={selectedNodeId}
-                  selectedNodeType={selectedNodeType}
-                  selectedFaultTreeId={selectedFaultTreeId}
-                  locale={locale}
-                />
-              )}
-              {(viewMode === 'et_editor' || (viewMode === 'split' && editorType === 'ET')) && (
-                <ETPropertyPanel
-                  selectedNodeId={selectedNodeId}
-                  selectedNodeType={selectedNodeType}
-                  locale={locale}
-                  onNodeSelect={(id, type) => {
-                    setSelectedNodeId(id);
-                    setSelectedNodeType(type);
-                  }}
-                />
-              )}
-            </div>
-            <div style={{ flex: '1 1 auto', overflowY: 'auto' }}>
-              <ValidationPanel locale={locale} />
+          <div style={{ position: 'relative', display: 'flex', height: '100%', flexShrink: 0 }}>
+            {/* 右側パネル開閉トグルボタン */}
+            <button
+              onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+              style={{
+                position: 'absolute',
+                left: '-20px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                zIndex: 10,
+                width: '20px',
+                height: '48px',
+                borderRadius: '8px 0 0 8px',
+                background: 'rgba(99, 102, 241, 0.05)',
+                border: '1px solid rgba(99, 102, 241, 0.2)',
+                borderRight: 'none',
+                backdropFilter: 'blur(4px)',
+                color: 'rgba(255, 255, 255, 0.6)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s, color 0.2s, border-color 0.2s',
+                boxShadow: 'none',
+                fontSize: '10px',
+                outline: 'none'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.95)';
+                e.currentTarget.style.color = '#ffffff';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                e.currentTarget.style.boxShadow = '0 0 12px rgba(99, 102, 241, 0.6)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.05)';
+                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.6)';
+                e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.2)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
+              title={rightPanelCollapsed ? (locale === 'ja' ? 'パネルを展開' : 'Expand Panel') : (locale === 'ja' ? 'パネルを折りたたむ' : 'Collapse Panel')}
+            >
+              {rightPanelCollapsed ? '◀' : '▶'}
+            </button>
+
+            {/* パネルコンテンツ本体 */}
+            <div style={{
+              width: rightPanelCollapsed ? '0px' : '320px',
+              minWidth: rightPanelCollapsed ? '0px' : '320px',
+              display: 'flex',
+              flexDirection: 'column',
+              borderLeft: rightPanelCollapsed ? 'none' : '1px solid var(--border-default)',
+              background: 'var(--bg-primary)',
+              overflow: 'hidden',
+              transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease',
+              opacity: rightPanelCollapsed ? 0 : 1
+            }}>
+              <div style={{ flex: '0 1 auto', overflowY: 'auto', borderBottom: '1px solid var(--border-default)' }}>
+                {(viewMode === 'editor' || (viewMode === 'split' && editorType === 'FT')) && (
+                  <PropertyPanel
+                    selectedNodeId={selectedNodeId}
+                    selectedNodeType={selectedNodeType}
+                    selectedFaultTreeId={selectedFaultTreeId}
+                    selectedNodeRawId={selectedNodeRawId}
+                    onNodeSelect={(id, type, rawId) => {
+                      setSelectedNodeId(id);
+                      setSelectedNodeType(type);
+                      setSelectedNodeRawId(rawId ?? null);
+                    }}
+                    locale={locale}
+                  />
+                )}
+                {(viewMode === 'et_editor' || (viewMode === 'split' && editorType === 'ET')) && (
+                  <ETPropertyPanel
+                    selectedNodeId={selectedNodeId}
+                    selectedNodeType={selectedNodeType}
+                    locale={locale}
+                    onNodeSelect={(id, type) => {
+                      setSelectedNodeId(id);
+                      setSelectedNodeType(type);
+                    }}
+                  />
+                )}
+              </div>
+              <div style={{ flex: '1 1 auto', overflowY: 'auto' }}>
+                <ValidationPanel locale={locale} />
+              </div>
             </div>
           </div>
         )}
@@ -1104,9 +1228,33 @@ export default function Home() {
             <div className="modal-body">
               {modal.type === 'delete' || modal.type === 'deleteNode' || modal.type === 'deleteEdge' ? (
                 <div style={{ padding: '10px 0', color: 'var(--text-primary)' }}>
-                  {locale === 'ja'
-                    ? 'このアイテムを削除してもよろしいですか？'
-                    : 'Are you sure you want to delete this item?'}
+                  {modal.type === 'deleteNode' && !['andGate', 'orGate', 'atleastGate', 'topEvent'].includes(modal.nodeType || '') ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ fontWeight: 600 }}>
+                        {locale === 'ja' ? '基事象の削除方法を選択してください：' : 'Select how to delete this Basic Event:'}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: modal.rawNodeId?.includes('::') ? 'pointer' : 'not-allowed', padding: '8px', background: 'var(--bg-secondary)', borderRadius: '6px', border: modal.value === 'local' ? '1px solid var(--accent-blue)' : '1px solid transparent', opacity: modal.rawNodeId?.includes('::') ? 1 : 0.5 }}>
+                          <input type="radio" name="deleteMode" value="local" checked={modal.value === 'local'} onChange={() => setModal({ ...modal, value: 'local' })} disabled={!modal.rawNodeId?.includes('::')} />
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{locale === 'ja' ? '選択した場所のみ削除 (ローカル)' : 'Delete from selected location only (Local)'}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{locale === 'ja' ? '現在のゲートからの接続のみを解除します。モデル全体には残ります。' : 'Removes connection from current gate only. Keeps event in the model.'}</div>
+                          </div>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', padding: '8px', background: 'var(--bg-secondary)', borderRadius: '6px', border: modal.value === 'global' ? '1px solid var(--accent-red)' : '1px solid transparent' }}>
+                          <input type="radio" name="deleteMode" value="global" checked={modal.value === 'global'} onChange={() => setModal({ ...modal, value: 'global' })} />
+                          <div>
+                            <div style={{ fontWeight: 600, color: 'var(--accent-red)' }}>{locale === 'ja' ? 'モデル全体から削除 (グローバル)' : 'Delete from entire model (Global)'}</div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{locale === 'ja' ? 'すべてのFault Treeからこの事象を完全に削除します。' : 'Completely removes this event from all Fault Trees.'}</div>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  ) : (
+                    locale === 'ja'
+                      ? 'このアイテムを削除してもよろしいですか？'
+                      : 'Are you sure you want to delete this item?'
+                  )}
                 </div>
               ) : (
                 <div className="form-group">
@@ -1133,7 +1281,11 @@ export default function Home() {
               <button
                 className={`btn ${modal.type === 'delete' || modal.type === 'deleteNode' || modal.type === 'deleteEdge' ? 'btn--danger' : 'btn--primary'}`}
                 onClick={() => {
-                  modal.onConfirm(modal.value);
+                  if (modal.type === 'deleteNode' && !['andGate', 'orGate', 'atleastGate', 'topEvent'].includes(modal.nodeType || '')) {
+                    modal.onConfirm(modal.value, (modal.value || 'local') as 'local' | 'global');
+                  } else {
+                    modal.onConfirm(modal.value);
+                  }
                   setModal({ ...modal, show: false });
                 }}
               >

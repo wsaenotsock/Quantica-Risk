@@ -166,25 +166,31 @@ export default function CCFGroupTable({ locale = 'ja', highlightedId }: { locale
                      {model.basicEvents
                        .filter(be => 
                          !memberSearchTerms[g.id] || 
-                         be.name.toLowerCase().includes(memberSearchTerms[g.id].toLowerCase())
+                         be.name.toLowerCase().includes(memberSearchTerms[g.id].toLowerCase()) ||
+                         (be.failureMode && be.failureMode.toLowerCase().includes(memberSearchTerms[g.id].toLowerCase())) ||
+                         (be.eventId && be.eventId.toLowerCase().includes(memberSearchTerms[g.id].toLowerCase()))
                        )
-                       .map((be) => (
-                         <label key={be.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', padding: '2px 0', cursor: 'pointer' }}>
-                           <input
-                             type="checkbox"
-                             checked={g.members.includes(be.id)}
-                             onChange={(e) => {
-                               const newMembers = e.target.checked
-                                 ? [...g.members, be.id]
-                                 : g.members.filter(id => id !== be.id);
-                               updateCCFGroup({ ...g, members: newMembers });
-                             }}
-                           />
-                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={be.name}>
-                             {be.name}
-                           </span>
-                         </label>
-                       ))}
+                       .map((be) => {
+                         const fm = be.failureMode || (be.parameterId ? (model.parameters?.find(p => p.id === be.parameterId)?.name) : '') || '';
+                         const labelText = fm ? `${be.name} (${fm})` : be.name;
+                         return (
+                           <label key={be.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', padding: '2px 0', cursor: 'pointer' }}>
+                             <input
+                               type="checkbox"
+                               checked={g.members.includes(be.id)}
+                               onChange={(e) => {
+                                 const newMembers = e.target.checked
+                                   ? [...g.members, be.id]
+                                   : g.members.filter(id => id !== be.id);
+                                 updateCCFGroup({ ...g, members: newMembers });
+                               }}
+                             />
+                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={labelText}>
+                               {labelText}
+                             </span>
+                           </label>
+                         );
+                       })}
                      {model.basicEvents.length === 0 && (
                        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
                          {locale === 'ja' ? '基事象がありません' : 'No basic events'}

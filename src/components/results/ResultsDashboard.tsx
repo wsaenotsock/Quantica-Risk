@@ -209,12 +209,21 @@ export default function ResultsDashboard({ locale = 'ja' }: ResultsDashboardProp
   const eventNameMap = new Map<string, string>();
   const eventIdMap = new Map<string, string>();
   const eventProbMap = new Map<string, number>();
+  const eventFailureModeMap = new Map<string, string>();
   for (const be of model.basicEvents) {
     eventNameMap.set(be.id, be.name);
     if (be.eventId) {
       eventIdMap.set(be.id, be.eventId);
     }
     eventProbMap.set(be.id, be.probability || 0);
+    if (be.failureMode) {
+      eventFailureModeMap.set(be.id, be.failureMode);
+    } else if (be.parameterId) {
+      const param = model.parameters?.find(p => p.id === be.parameterId);
+      if (param) {
+        eventFailureModeMap.set(be.id, param.name);
+      }
+    }
   }
   for (const ie of model.initiatingEvents) {
     eventNameMap.set(ie.id, ie.name);
@@ -228,6 +237,14 @@ export default function ResultsDashboard({ locale = 'ja' }: ResultsDashboardProp
     const name = eventNameMap.get(id) || id;
     const code = eventIdMap.get(id);
     return code ? `${name} [${code}]` : name;
+  };
+
+  const getEventFailureMode = (eid: string) => {
+    if (eid.startsWith('CCF_') && eid.includes('_IND_')) {
+      const memberId = eid.split('_IND_')[1];
+      return eventFailureModeMap.get(memberId) || '';
+    }
+    return eventFailureModeMap.get(eid) || '';
   };
 
   const getEventDisplayName = (eid: string) => {
@@ -441,7 +458,11 @@ export default function ResultsDashboard({ locale = 'ja' }: ResultsDashboardProp
                     onClick={() => {
                       const csvData = displayedCutsets.map((cs, i) => ({
                         Rank: i + 1,
-                        Events: cs.events.join(' | '),
+                        Events: cs.events.map(eid => {
+                          const name = getEventDisplayName(eid);
+                          const fm = getEventFailureMode(eid);
+                          return fm ? `${name} (${fm})` : name;
+                        }).join(' | '),
                         Order: cs.order,
                         Probability: cs.probability,
                         Contribution: ((cs.probability / result.topEventProbability) * 100).toFixed(2) + '%'
@@ -495,14 +516,31 @@ export default function ResultsDashboard({ locale = 'ja' }: ResultsDashboardProp
                       <td style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>#{globalIndex + 1}</td>
                     <td>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {cs.events.map((eid, j) => (
-                          <span key={j} className="badge badge--neutral" style={{ fontSize: '10px' }}>
-                            {getEventDisplayName(eid)}
-                            <span style={{ marginLeft: '4px', opacity: 0.6 }}>
-                              ({getEventProb(eid).toExponential(1)})
+                        {cs.events.map((eid, j) => {
+                          const name = getEventDisplayName(eid);
+                          const fm = getEventFailureMode(eid);
+                          const prob = getEventProb(eid).toExponential(1);
+                          return (
+                            <span key={j} className="badge badge--neutral" style={{ fontSize: '10px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontWeight: 600 }}>{name}</span>
+                              {fm && (
+                                <span style={{ 
+                                  background: 'rgba(239, 68, 68, 0.15)', 
+                                  color: 'var(--accent-red)', 
+                                  padding: '1px 4px', 
+                                  borderRadius: '3px',
+                                  fontSize: '9px',
+                                  fontWeight: 500
+                                }}>
+                                  {fm}
+                                </span>
+                              )}
+                              <span style={{ opacity: 0.6 }}>
+                                ({prob})
+                              </span>
                             </span>
-                          </span>
-                        ))}
+                          );
+                        })}
                       </div>
                     </td>
                     <td style={{ textAlign: 'center' }}>{cs.order}</td>

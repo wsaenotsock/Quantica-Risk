@@ -8,17 +8,45 @@ interface BasicEventIDInputProps {
   basicEvent: BasicEvent;
   basicEvents: BasicEvent[];
   updateBasicEvent: (event: BasicEvent) => void;
+  updateBasicEventIdGlobal: (oldEventId: string, newEventId: string, syncWithEvent?: BasicEvent) => void;
+  cloneAndUpdateBasicEventLocal: (
+    faultTreeId: string,
+    parentGateId: string,
+    oldEvent: BasicEvent,
+    newEventId: string,
+    syncWithEvent?: BasicEvent
+  ) => string;
+  selectedFaultTreeId: string | null;
+  selectedNodeRawId?: string | null;
+  onNodeSelect?: (id: string | null, type: string | null, rawId?: string | null) => void;
   locale: 'ja' | 'en';
 }
 
 interface PendingSync {
   trimmedId: string;
   sameIdEvent: BasicEvent;
+  renameMode: 'local' | 'global';
 }
 
-function BasicEventIDInput({ basicEvent, basicEvents, updateBasicEvent, locale }: BasicEventIDInputProps) {
+interface PendingRename {
+  trimmedId: string;
+  currentId: string;
+}
+
+function BasicEventIDInput({
+  basicEvent,
+  basicEvents,
+  updateBasicEvent,
+  updateBasicEventIdGlobal,
+  cloneAndUpdateBasicEventLocal,
+  selectedFaultTreeId,
+  selectedNodeRawId,
+  onNodeSelect,
+  locale
+}: BasicEventIDInputProps) {
   const [localEventId, setLocalEventId] = React.useState(basicEvent.eventId || '');
   const [pendingSync, setPendingSync] = React.useState<PendingSync | null>(null);
+  const [pendingRename, setPendingRename] = React.useState<PendingRename | null>(null);
 
   React.useEffect(() => {
     setLocalEventId(basicEvent.eventId || '');
@@ -35,9 +63,47 @@ function BasicEventIDInput({ basicEvent, basicEvents, updateBasicEvent, locale }
     // ストアから最新データを取得して重複チェック
     const storeBasicEvents = useModelStore.getState().model.basicEvents;
 
+    // 1. 変更前のID（currentId）を持つ基本事象が複数存在するかチェック
+    // 従来の storeBasicEvents.filter(...).length > 1 は、basicEvents 内の重複をチェックしていたが、
+    // FTモデル全体で同じUUIDが複数箇所で参照（共有）されているかを確認する必要がある。
+    let referenceCount = 0;
+    const storeFaultTrees = useModelStore.getState().model.faultTrees;
+    for (const ft of storeFaultTrees) {
+      for (const gate of ft.gates) {
+        for (const childId of gate.children) {
+          if (childId === basicEvent.id) {
+            referenceCount++;
+          }
+        }
+      }
+    }
+    const isSharedId = referenceCount > 1;
+
+    if (isSharedId) {
+      // 変更元IDが共有されているので、グローバル/ローカルの確認モーダルを表示
+      setPendingRename({ trimmedId, currentId });
+    } else {
+      // 共有されていなければ、ローカル（＝単一のイベント）の変更として処理
+      proceedWithRename(trimmedId, 'local');
+    }
+  };
+
+  const proceedWithRename = (trimmedId: string, mode: 'local' | 'global') => {
+    const storeBasicEvents = useModelStore.getState().model.basicEvents;
+
+    // 2. 新しいIDがすでに他の基本事象で使われているかチェック
     const sameIdEvent = trimmedId 
       ? storeBasicEvents.find(e => {
-          if (e.id === basicEvent.id) return false;
+          if (mode === 'global') {
+            // グローバル変更の場合は、今回の変更対象（元のID）以外の基本事象と重複しているか
+            const currentId = basicEvent.eventId || '';
+            if (e.eventId && e.eventId.trim().toLowerCase() === currentId.toLowerCase()) {
+              return false;
+            }
+          } else {
+            // ローカル変更の場合は、自分自身（UUID）以外と重複しているか
+            if (e.id === basicEvent.id) return false;
+          }
           const eEventId = e.eventId;
           if (eEventId && eEventId.trim() !== '' && eEventId.trim().toLowerCase() === trimmedId.toLowerCase()) {
             return true;
@@ -47,49 +113,94 @@ function BasicEventIDInput({ basicEvent, basicEvents, updateBasicEvent, locale }
       : null;
 
     if (sameIdEvent) {
-      // カスタムモーダルで確認を表示
-      setPendingSync({ trimmedId, sameIdEvent });
+      // 新IDが既存のものと重複する場合：既存データ反映モーダルを表示する準備
+      setPendingSync({ 
+        trimmedId, 
+        sameIdEvent,
+        renameMode: mode
+      });
     } else {
-      updateBasicEvent({
-        ...basicEvent,
-        eventId: trimmedId,
-        __force_sync_others__: true
-      } as any);
+      // 重複しない場合：即時適用
+      if (mode === 'global') {
+        const currentId = basicEvent.eventId || '';
+        updateBasicEventIdGlobal(currentId, trimmedId);
+      } else {
+        // ローカル変更（自分のみ）
+        if (selectedFaultTreeId && selectedNodeRawId && selectedNodeRawId.includes('::')) {
+          const parentGateId = selectedNodeRawId.split('::')[0];
+          const newUUID = cloneAndUpdateBasicEventLocal(
+            selectedFaultTreeId,
+            parentGateId,
+            basicEvent,
+            trimmedId
+          );
+          setLocalEventId(trimmedId);
+          if (onNodeSelect) {
+            onNodeSelect(newUUID, 'basicEvent', `${parentGateId}::${newUUID}`);
+          }
+        } else {
+          updateBasicEvent({
+            ...basicEvent,
+            eventId: trimmedId,
+            __force_sync_others__: false
+          } as any);
+          setLocalEventId(trimmedId);
+        }
+      }
     }
   };
 
   const handleConfirmSync = () => {
     if (!pendingSync) return;
-    const { trimmedId, sameIdEvent } = pendingSync;
-    updateBasicEvent({
-      ...basicEvent,
-      eventId: trimmedId,
-      name: sameIdEvent.name,
-      tags: sameIdEvent.tags || [],
-      failureType: sameIdEvent.failureType,
-      failureRate: sameIdEvent.failureRate,
-      repairTime: sameIdEvent.repairTime,
-      probability: sameIdEvent.probability,
-      missionTime: sameIdEvent.missionTime,
-      demands: sameIdEvent.demands,
-      distribution: JSON.parse(JSON.stringify(sameIdEvent.distribution)),
-      parameterId: sameIdEvent.parameterId,
-      source: sameIdEvent.source || '',
-      memo: sameIdEvent.memo || '',
-      seismicFragilityId: sameIdEvent.seismicFragilityId,
-      __force_sync_others__: true
-    } as any);
+    const { trimmedId, sameIdEvent, renameMode } = pendingSync;
+    
+    if (renameMode === 'global') {
+      const currentId = basicEvent.eventId || '';
+      updateBasicEventIdGlobal(currentId, trimmedId, sameIdEvent);
+      setLocalEventId(trimmedId);
+    } else {
+      if (selectedFaultTreeId && selectedNodeRawId && selectedNodeRawId.includes('::')) {
+        const parentGateId = selectedNodeRawId.split('::')[0];
+        const newUUID = cloneAndUpdateBasicEventLocal(
+          selectedFaultTreeId,
+          parentGateId,
+          basicEvent,
+          trimmedId,
+          sameIdEvent
+        );
+        setLocalEventId(trimmedId);
+        if (onNodeSelect) {
+          onNodeSelect(newUUID, 'basicEvent', `${parentGateId}::${newUUID}`);
+        }
+      } else {
+        updateBasicEvent({
+          ...basicEvent,
+          eventId: trimmedId,
+          name: sameIdEvent.name,
+          tags: sameIdEvent.tags || [],
+          failureType: sameIdEvent.failureType,
+          failureRate: sameIdEvent.failureRate,
+          repairTime: sameIdEvent.repairTime,
+          probability: sameIdEvent.probability,
+          missionTime: sameIdEvent.missionTime,
+          demands: sameIdEvent.demands,
+          distribution: JSON.parse(JSON.stringify(sameIdEvent.distribution)),
+          parameterId: sameIdEvent.parameterId,
+          source: sameIdEvent.source || '',
+          memo: sameIdEvent.memo || '',
+          seismicFragilityId: sameIdEvent.seismicFragilityId,
+          __force_sync_others__: false
+        } as any);
+        setLocalEventId(trimmedId);
+      }
+    }
     setPendingSync(null);
   };
 
   const handleCancelSync = () => {
     if (!pendingSync) return;
-    const { trimmedId } = pendingSync;
-    updateBasicEvent({
-      ...basicEvent,
-      eventId: trimmedId,
-      __force_sync_others__: false
-    } as any);
+    // 同一IDで異なるデータは不可のため、元のIDに戻す
+    setLocalEventId(basicEvent.eventId || '');
     setPendingSync(null);
   };
 
@@ -126,6 +237,144 @@ function BasicEventIDInput({ basicEvent, basicEvents, updateBasicEvent, locale }
           </button>
         )}
       </div>
+
+      {/* ID変更モード選択モーダル（ローカル vs グローバル） */}
+      {pendingRename && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 99999,
+          backdropFilter: 'blur(4px)',
+        }}>
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(30, 35, 55, 0.98), rgba(20, 24, 40, 0.98))',
+            border: '1px solid rgba(99, 102, 241, 0.3)',
+            borderRadius: '16px',
+            padding: '28px 32px',
+            maxWidth: '480px',
+            width: '90%',
+            boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5), 0 0 30px rgba(99, 102, 241, 0.1)',
+            color: '#e2e8f0',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+              <span style={{ fontSize: '24px' }}>🔄</span>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#f8fafc' }}>
+                {locale === 'ja' ? '基事象IDの変更範囲の選択' : 'Select ID Change Scope'}
+              </h3>
+            </div>
+            <p style={{ margin: '0 0 16px', fontSize: '14px', lineHeight: '1.6', color: '#cbd5e1' }}>
+              {locale === 'ja'
+                ? `変更前の基事象ID "${pendingRename.currentId}" は、モデル内の複数の基事象で共有されています。`
+                : `The event ID "${pendingRename.currentId}" is shared by multiple basic events in the model.`}
+            </p>
+            <p style={{ margin: '0 0 20px', fontSize: '14px', lineHeight: '1.6', color: '#cbd5e1' }}>
+              {locale === 'ja'
+                ? `IDの変更を、選択しているこの基事象のみに適用しますか（ローカル）、それとも同じIDを持つすべての基事象に適用しますか（グローバル）？`
+                : `Do you want to apply the ID change to only this selected event (Local) or to all events sharing this ID (Global)?`}
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '24px' }}>
+              <button
+                onClick={() => {
+                  const trimmed = pendingRename.trimmedId;
+                  setPendingRename(null);
+                  proceedWithRename(trimmed, 'local');
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(99, 102, 241, 0.2)',
+                  background: 'rgba(99, 102, 241, 0.05)',
+                  color: '#e2e8f0',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(99, 102, 241, 0.15)';
+                  e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(99, 102, 241, 0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.2)';
+                }}
+              >
+                <span style={{ fontWeight: 600, color: '#a5b4fc', fontSize: '14px' }}>
+                  {locale === 'ja' ? '選択中の基事象のみ変更 (ローカル)' : 'Change only selected event (Local)'}
+                </span>
+                <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                  {locale === 'ja' ? 'この基事象だけが新しいIDになります。他の基事象は元のIDのまま維持されます。' : 'Only this event gets the new ID. Others remain with the current ID.'}
+                </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const trimmed = pendingRename.trimmedId;
+                  setPendingRename(null);
+                  proceedWithRename(trimmed, 'global');
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(168, 85, 247, 0.2)',
+                  background: 'rgba(168, 85, 247, 0.05)',
+                  color: '#e2e8f0',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)';
+                  e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(168, 85, 247, 0.05)';
+                  e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.2)';
+                }}
+              >
+                <span style={{ fontWeight: 600, color: '#c084fc', fontSize: '14px' }}>
+                  {locale === 'ja' ? 'すべての同一IDの基事象を変更 (グローバル)' : 'Change all events sharing this ID (Global)'}
+                </span>
+                <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                  {locale === 'ja' ? `モデル内のすべての同一ID "${pendingRename.currentId}" の基事象が一括で "${pendingRename.trimmedId}" に変更されます。` : `All events sharing the ID "${pendingRename.currentId}" will be renamed to "${pendingRename.trimmedId}".`}
+                </span>
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setPendingRename(null)}
+                style={{
+                  padding: '8px 20px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(148, 163, 184, 0.3)',
+                  background: 'rgba(51, 65, 85, 0.5)',
+                  color: '#94a3b8',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {locale === 'ja' ? 'キャンセル' : 'Cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 同一ID確認モーダル */}
       {pendingSync && (
@@ -233,6 +482,8 @@ interface PropertyPanelProps {
   selectedNodeId: string | null;
   selectedNodeType: string | null;
   selectedFaultTreeId: string | null;
+  selectedNodeRawId?: string | null;
+  onNodeSelect?: (id: string | null, type: string | null, rawId?: string | null) => void;
   locale?: 'ja' | 'en';
 }
 
@@ -240,10 +491,14 @@ export default function PropertyPanel({
   selectedNodeId, 
   selectedNodeType, 
   selectedFaultTreeId: propSelectedFaultTreeId,
+  selectedNodeRawId,
+  onNodeSelect,
   locale = 'ja' 
 }: PropertyPanelProps) {
   const model = useModelStore((s) => s.model);
   const updateBasicEvent = useModelStore((s) => s.updateBasicEvent);
+  const updateBasicEventIdGlobal = useModelStore((s) => s.updateBasicEventIdGlobal);
+  const cloneAndUpdateBasicEventLocal = useModelStore((s) => s.cloneAndUpdateBasicEventLocal);
   const updateGate = useModelStore((s) => s.updateGate);
   const convertToSubtree = useModelStore((s) => s.convertToSubtree);
   const selectFaultTree = useModelStore((s) => s.selectFaultTree);
@@ -300,17 +555,24 @@ export default function PropertyPanel({
               basicEvent={basicEvent}
               basicEvents={model.basicEvents}
               updateBasicEvent={updateBasicEvent}
+              updateBasicEventIdGlobal={updateBasicEventIdGlobal}
+              cloneAndUpdateBasicEventLocal={cloneAndUpdateBasicEventLocal}
+              selectedFaultTreeId={selectedFaultTreeId}
+              selectedNodeRawId={selectedNodeRawId}
+              onNodeSelect={onNodeSelect}
               locale={locale}
             />
           </div>
+
           <div className="form-group">
-            <label className="form-label">{locale === 'ja' ? '機器名称' : 'Name'}</label>
+            <label className="form-label">{locale === 'ja' ? '名前' : 'Name'}</label>
             <input
               className="form-input"
               value={basicEvent.name}
               onChange={(e) => updateBasicEvent({ ...basicEvent, name: e.target.value })}
             />
           </div>
+
           <div className="form-group">
             <label className="form-label">{locale === 'ja' ? 'タグ' : 'Tags'}</label>
             <input
@@ -318,6 +580,19 @@ export default function PropertyPanel({
               value={basicEvent.tags.join(', ')}
               onChange={(e) => updateBasicEvent({ ...basicEvent, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean) })}
               placeholder={locale === 'ja' ? 'カンマ区切り' : 'Comma separated'}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">{locale === 'ja' ? '故障モード' : 'Failure Mode'}</label>
+             <input
+              className="form-input"
+              value={basicEvent.failureMode || ''}
+              onChange={(e) => updateBasicEvent({ ...basicEvent, failureMode: e.target.value })}
+              placeholder={
+                basicEvent.parameterId
+                  ? (model.parameters?.find(p => p.id === basicEvent.parameterId)?.name || '')
+                  : (locale === 'ja' ? '例: 開失敗、動作固着' : 'e.g. Fail to open')
+              }
             />
           </div>
         </div>

@@ -33,6 +33,7 @@ export interface BasicEvent {
   eventId?: string; // User-defined customizable event ID
   eventType?: 'basicEvent' | 'houseEvent' | 'undeveloped' | 'transferGate';
   tags: string[];
+  failureMode?: string; // Failure mode description (e.g. Fail to open)
   parameterId?: string; // If set, refers to a Parameter
   failureType?: 'time' | 'demand';
   failureRate: number;

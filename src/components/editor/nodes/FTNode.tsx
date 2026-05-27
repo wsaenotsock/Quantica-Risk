@@ -205,6 +205,20 @@ const FTNode = memo((props: any) => {
         />
       </div>
 
+      {data.eventId && (
+        <div style={{
+          fontSize: '10px',
+          color: 'var(--text-tertiary)',
+          fontWeight: '600',
+          marginTop: '4px',
+          marginBottom: '-2px',
+          textAlign: 'center',
+          fontFamily: 'monospace'
+        }}>
+          [{data.eventId}]
+        </div>
+      )}
+
       <div className="ft-node__label">{String(label)}</div>
 
       {collapsed && (

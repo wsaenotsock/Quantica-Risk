@@ -34,8 +34,9 @@ export default function FlagGroupTable({ locale = 'ja', highlightedId }: FlagGro
     const group = flagGroups.find(g => g.id === groupId);
     if (!group) return;
     
+    const firstBe = model.basicEvents[0];
     const newItem: FlagItem = {
-      eventId: model.basicEvents[0]?.id || '',
+      eventId: firstBe ? (firstBe.eventId || firstBe.id) : '',
       state: false
     };
     
@@ -184,24 +185,37 @@ export default function FlagGroupTable({ locale = 'ja', highlightedId }: FlagGro
                           transition: 'background 0.3s ease'
                         }}>
                           <td style={{ padding: '4px' }}>
-                            <select
-                              className="form-select"
-                              value={item.eventId}
-                              onChange={(e) => handleUpdateItem(group.id, idx, { eventId: e.target.value })}
-                              style={{ width: '100%', background: 'transparent', border: 'none' }}
-                            >
-                              <option value="">{locale === 'ja' ? '選択してください...' : 'Select event...'}</option>
-                              <optgroup label={locale === 'ja' ? '基本事象' : 'Basic Events'}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <input
+                                list={`event-list-${group.id}-${idx}`}
+                                className="form-input form-input--mono"
+                                value={item.eventId}
+                                onChange={(e) => handleUpdateItem(group.id, idx, { eventId: e.target.value })}
+                                placeholder={locale === 'ja' ? 'ID直接入力または選択...' : 'Type or select ID...'}
+                                style={{ width: '100%', background: 'transparent', border: 'none', padding: '4px 8px', fontSize: '12px' }}
+                              />
+                              <datalist id={`event-list-${group.id}-${idx}`}>
                                 {model.basicEvents.map(be => (
-                                  <option key={be.id} value={be.id}>{be.name} ({be.id})</option>
+                                  <option key={be.id} value={be.eventId || be.id}>
+                                    {be.eventId ? `[${be.eventId}] ${be.name}` : be.name}
+                                  </option>
                                 ))}
-                              </optgroup>
-                              <optgroup label={locale === 'ja' ? 'ハウスイベント' : 'House Events'}>
                                 {model.houseEvents?.map(he => (
-                                  <option key={he.id} value={he.id}>{he.name} ({he.id})</option>
+                                  <option key={he.id} value={he.eventId || he.id}>
+                                    {he.eventId ? `[${he.eventId}] ${he.name}` : he.name}
+                                  </option>
                                 ))}
-                              </optgroup>
-                            </select>
+                              </datalist>
+                              {(() => {
+                                const matchedEvent = model.basicEvents.find(be => be.eventId === item.eventId || be.id === item.eventId)
+                                  || model.houseEvents?.find(he => he.eventId === item.eventId || he.id === item.eventId);
+                                return matchedEvent ? (
+                                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', paddingLeft: '8px' }}>
+                                    🏷️ {matchedEvent.name}
+                                  </span>
+                                ) : null;
+                              })()}
+                            </div>
                           </td>
                           <td style={{ padding: '4px' }}>
                             <select

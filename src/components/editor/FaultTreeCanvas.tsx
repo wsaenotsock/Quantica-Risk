@@ -34,8 +34,8 @@ import { useResultsStore, runWorkerCommand } from '@/store/resultsStore';
 import type { FTNodeData, FTNodeType, BasicEvent, GateType } from '@/lib/types';
 
 interface FaultTreeCanvasProps {
-  onNodeSelect: (nodeId: string | null, nodeType: string | null) => void;
-  onNodeDeleteRequest: (nodeId: string, nodeType: string) => void;
+  onNodeSelect: (nodeId: string | null, nodeType: string | null, rawNodeId?: string | null) => void;
+  onNodeDeleteRequest: (nodeId: string, nodeType: string, rawNodeId?: string) => void;
   onEdgeDeleteRequest: (edges: Edge[]) => void;
   onQuantifySuccess?: () => void;
   locale?: 'ja' | 'en';
@@ -514,7 +514,7 @@ export default function FaultTreeCanvas({
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      onNodeSelect(getRealId(node.id), (node.data as FTNodeData).nodeType);
+      onNodeSelect(getRealId(node.id), (node.data as FTNodeData).nodeType, node.id);
     },
     [onNodeSelect]
   );
@@ -929,7 +929,7 @@ export default function FaultTreeCanvas({
 
   const handleDeleteNode = useCallback((nodeId: string, nodeType: string) => {
     if (onNodeDeleteRequest) {
-      onNodeDeleteRequest(getRealId(nodeId), nodeType);
+      onNodeDeleteRequest(getRealId(nodeId), nodeType, nodeId);
     }
     setContextMenu(null);
   }, [onNodeDeleteRequest]);
@@ -1220,46 +1220,149 @@ export default function FaultTreeCanvas({
               📋 {locale === 'ja' ? 'ここに貼り付け' : 'Paste Here'}
             </button>
           )}
-          {['basicEvent', 'houseEvent', 'undeveloped'].includes(contextMenu.nodeType) && (
-            <>
-              <button
-                className="context-menu-item"
-                style={{
-                  width: '100%',
-                  padding: '8px 16px',
-                  textAlign: 'left',
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-primary)',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                }}
-                onClick={() => handleInsertSibling('basicEvent')}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-              >
-                ➡️ {locale === 'ja' ? '右に基事象を挿入' : 'Insert Basic Event to Right'}
-              </button>
-              <button
-                className="context-menu-item"
-                style={{
-                  width: '100%',
-                  padding: '8px 16px',
-                  textAlign: 'left',
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-primary)',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                }}
-                onClick={() => handleInsertSibling('gate')}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-              >
-                ➡️ {locale === 'ja' ? '右にゲートを挿入' : 'Insert Gate to Right'}
-              </button>
-            </>
-          )}
+          {['basicEvent', 'houseEvent', 'undeveloped'].includes(contextMenu.nodeType) && (() => {
+            const be = model.basicEvents.find(e => e.id === getRealId(contextMenu.nodeId));
+            const isCurrentlyHouse = be?.eventType === 'houseEvent';
+            return (
+              <>
+                <button
+                  className="context-menu-item"
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    textAlign: 'left',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--accent-primary, #3b82f6)',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                  onClick={() => {
+                    if (be) {
+                      updateBasicEvent({
+                        ...be,
+                        eventType: 'houseEvent',
+                        probability: 1,
+                        failureRate: 1,
+                        failureType: 'demand',
+                        demands: 1,
+                        distribution: { type: 'point' }
+                      });
+                    }
+                    setContextMenu(null);
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  🟢 {locale === 'ja' ? 'TRUE (P=1.0) に設定' : 'Set to TRUE (P=1.0)'}
+                </button>
+                <button
+                  className="context-menu-item"
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    textAlign: 'left',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--accent-red, #ef4444)',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                  onClick={() => {
+                    if (be) {
+                      updateBasicEvent({
+                        ...be,
+                        eventType: 'houseEvent',
+                        probability: 0,
+                        failureRate: 0,
+                        failureType: 'demand',
+                        demands: 1,
+                        distribution: { type: 'point' }
+                      });
+                    }
+                    setContextMenu(null);
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  🔴 {locale === 'ja' ? 'FALSE (P=0.0) に設定' : 'Set to FALSE (P=0.0)'}
+                </button>
+                {isCurrentlyHouse && (
+                  <button
+                    className="context-menu-item"
+                    style={{
+                      width: '100%',
+                      padding: '8px 16px',
+                      textAlign: 'left',
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-secondary)',
+                      fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      if (be) {
+                        updateBasicEvent({
+                          ...be,
+                          eventType: 'basicEvent',
+                          probability: 1e-4,
+                          failureRate: 1e-4,
+                          failureType: 'time',
+                          missionTime: 24,
+                          demands: 1,
+                          distribution: { type: 'lognormal', mean: 1e-4, errorFactor: 3 }
+                        });
+                      }
+                      setContextMenu(null);
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    ⚙️ {locale === 'ja' ? '通常の基事象に戻す' : 'Reset to Basic Event'}
+                  </button>
+                )}
+                <div style={{ height: '1px', background: 'var(--border-default)', margin: '4px 0' }} />
+                <button
+                  className="context-menu-item"
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    textAlign: 'left',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-primary)',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => handleInsertSibling('basicEvent')}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  ➡️ {locale === 'ja' ? '右に基事象を挿入' : 'Insert Basic Event to Right'}
+                </button>
+                <button
+                  className="context-menu-item"
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    textAlign: 'left',
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-primary)',
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => handleInsertSibling('gate')}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  ➡️ {locale === 'ja' ? '右にゲートを挿入' : 'Insert Gate to Right'}
+                </button>
+              </>
+            );
+          })()}
           {['andGate', 'orGate', 'atleastGate', 'basicEvent'].includes(contextMenu.nodeType) && (
             <button
               className="context-menu-item"

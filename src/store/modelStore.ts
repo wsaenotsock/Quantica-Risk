@@ -1387,6 +1387,14 @@ interface ModelState {
   undo: () => void;
   redo: () => void;
   updateBasicEvent: (event: BasicEvent) => void;
+  updateBasicEventIdGlobal: (oldEventId: string, newEventId: string, syncWithEvent?: BasicEvent) => void;
+  cloneAndUpdateBasicEventLocal: (
+    faultTreeId: string,
+    parentGateId: string,
+    oldEvent: BasicEvent,
+    newEventId: string,
+    syncWithEvent?: BasicEvent
+  ) => string;
   addBasicEvent: (event: BasicEvent) => void;
   removeBasicEvent: (id: string) => void;
   addParameter: (param: Parameter) => void;
@@ -1604,7 +1612,115 @@ export const useModelStore = create<ModelState>((set, get) => ({
     });
   },
 
+  updateBasicEventIdGlobal: (oldEventId, newEventId, syncWithEvent) => {
+    get().pushHistory();
+    set((state) => {
+      const basicEvents = state.model.basicEvents.map((e) => {
+        if (e.eventId && e.eventId.trim().toLowerCase() === oldEventId.trim().toLowerCase()) {
+          if (syncWithEvent) {
+            return {
+              ...e,
+              eventId: newEventId,
+              name: syncWithEvent.name,
+              tags: syncWithEvent.tags || [],
+              failureType: syncWithEvent.failureType,
+              failureRate: syncWithEvent.failureRate,
+              repairTime: syncWithEvent.repairTime,
+              probability: syncWithEvent.probability,
+              missionTime: syncWithEvent.missionTime,
+              demands: syncWithEvent.demands,
+              distribution: JSON.parse(JSON.stringify(syncWithEvent.distribution)),
+              parameterId: syncWithEvent.parameterId,
+              source: syncWithEvent.source || '',
+              memo: syncWithEvent.memo || '',
+              seismicFragilityId: syncWithEvent.seismicFragilityId,
+            };
+          } else {
+            return {
+              ...e,
+              eventId: newEventId,
+            };
+          }
+        }
+        return e;
+      });
 
+      return {
+        model: {
+          ...state.model,
+          basicEvents,
+          updatedAt: new Date().toISOString(),
+        },
+        isDirty: true
+      };
+    });
+  },
+
+  cloneAndUpdateBasicEventLocal: (faultTreeId, parentGateId, oldEvent, newEventId, syncWithEvent) => {
+    get().pushHistory();
+    const newUUID = uuidv4();
+    
+    // 1. 新基本事象オブジェクトをクローン作成
+    const baseEvent = syncWithEvent || oldEvent;
+    const clonedEvent: BasicEvent = {
+      ...baseEvent,
+      id: newUUID,
+      eventId: newEventId,
+      position: oldEvent.position ? { x: oldEvent.position.x, y: oldEvent.position.y } : { x: 0, y: 0 }
+    };
+
+    set((state) => {
+      // 2. basicEvents リストに新規追加
+      let basicEvents = [...state.model.basicEvents, clonedEvent];
+
+      // 3. 親ゲートの children 内の oldEvent.id を newUUID に差し替える
+      const faultTrees = state.model.faultTrees.map((ft) => {
+        if (ft.id === faultTreeId) {
+          return {
+            ...ft,
+            gates: ft.gates.map((g) => {
+              if (g.id === parentGateId) {
+                return {
+                  ...g,
+                  children: g.children.map((cid) => (cid === oldEvent.id ? newUUID : cid))
+                };
+              }
+              return g;
+            })
+          };
+        }
+        return ft;
+      });
+
+      // 4. 差し替え後、古い基事象がどのゲートからも参照されなくなった場合は削除する
+      //    （非共有の基事象をリネームした場合に孤立ノードが残るのを防止）
+      let oldEventStillReferenced = false;
+      for (const ft of faultTrees) {
+        for (const gate of ft.gates) {
+          if (gate.children.includes(oldEvent.id)) {
+            oldEventStillReferenced = true;
+            break;
+          }
+        }
+        if (oldEventStillReferenced) break;
+      }
+      if (!oldEventStillReferenced) {
+        basicEvents = basicEvents.filter(e => e.id !== oldEvent.id);
+      }
+
+      return {
+        model: {
+          ...state.model,
+          basicEvents,
+          faultTrees,
+          updatedAt: new Date().toISOString(),
+        },
+        isDirty: true
+      };
+    });
+
+    return newUUID;
+  },
 
   addBasicEvent: (event) => {
     get().pushHistory();

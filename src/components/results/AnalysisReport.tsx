@@ -139,6 +139,31 @@ export default function AnalysisReport({
     return 0;
   };
 
+  const getEventFailureMode = (eid: string) => {
+    // CCF 独立イベントのデコード: CCF_GroupID_IND_MemberID
+    if (eid.startsWith('CCF_') && eid.includes('_IND_')) {
+      const memberId = eid.split('_IND_')[1];
+      const be = model.basicEvents.find(b => b.id === memberId);
+      if (be) {
+        if (be.failureMode) return be.failureMode;
+        if (be.parameterId) {
+          const param = model.parameters?.find(p => p.id === be.parameterId);
+          if (param) return param.name;
+        }
+      }
+      return '';
+    }
+    const be = model.basicEvents.find(b => b.id === eid);
+    if (be) {
+      if (be.failureMode) return be.failureMode;
+      if (be.parameterId) {
+        const param = model.parameters?.find(p => p.id === be.parameterId);
+        if (param) return param.name;
+      }
+    }
+    return '';
+  };
+
   return (
     <div className="analysis-report print-content" style={{ padding: '40px 60px', background: 'white', color: 'black', minHeight: '100%', fontFamily: '"Inter", "Segoe UI", sans-serif' }}>
       <header style={{ borderBottom: '3px solid #333', marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '20px' }}>
@@ -304,9 +329,22 @@ export default function AnalysisReport({
                   <td style={{ padding: '10px 8px' }}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                       {cs.events.map((eid, j) => {
+                        const fm = getEventFailureMode(eid);
                         return (
-                          <span key={j} style={{ padding: '2px 6px', background: '#f1f5f9', borderRadius: '3px', fontSize: '10px', border: '1px solid #e2e8f0' }}>
-                            {getEventDisplayName(eid)}
+                          <span key={j} style={{ padding: '2px 6px', background: '#f1f5f9', borderRadius: '3px', fontSize: '10px', border: '1px solid #e2e8f0', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontWeight: 600 }}>{getEventDisplayName(eid)}</span>
+                            {fm && (
+                              <span style={{ 
+                                background: 'rgba(220, 38, 38, 0.08)', 
+                                color: '#dc2626', 
+                                padding: '0px 4px', 
+                                borderRadius: '2px',
+                                fontSize: '9px',
+                                fontWeight: 500
+                              }}>
+                                {fm}
+                              </span>
+                            )}
                             <span style={{ marginLeft: '4px', opacity: 0.6, fontWeight: 400 }}>
                               ({getEventProb(eid).toExponential(1)})
                             </span>

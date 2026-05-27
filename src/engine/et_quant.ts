@@ -288,7 +288,9 @@ export function quantifyEventTree(
     const { processedCutsets: recoveredCutSets, appliedCount: seqAppliedCount } = applyRecoveryRules(
       seqCutSets,
       recoveryRules,
-      probabilities
+      probabilities,
+      model.basicEvents,
+      model.initiatingEvents
     );
 
     // Re-calculate sequence frequency based on post-processed cutsets
@@ -383,7 +385,9 @@ export function quantifyEventTree(
   const { processedCutsets: recoveredCutSets, appliedCount: totalAppliedCount } = applyRecoveryRules(
     cutSets,
     recoveryRules,
-    probabilities
+    probabilities,
+    model.basicEvents,
+    model.initiatingEvents
   );
 
   const totalRecoveredFreq = method === 'mcub' ? mcubApprox(recoveredCutSets) : rareEventApprox(recoveredCutSets);

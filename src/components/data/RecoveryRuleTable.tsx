@@ -18,6 +18,7 @@ export default function RecoveryRuleTable({ locale = 'ja', highlightedId }: Reco
   const setModel = useModelStore((s) => s.setModel);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [newCondInput, setNewCondInput] = useState<Record<string, string>>({});
 
   const recoveryGroups = model.recoveryGroups || [];
   const filteredGroups = recoveryGroups.filter(rg => 
@@ -237,42 +238,70 @@ export default function RecoveryRuleTable({ locale = 'ja', highlightedId }: Reco
                             </td>
                             <td style={{ padding: '4px' }}>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', minHeight: '28px', alignItems: 'center' }}>
-                                {rule.condition.map(cid => (
-                                  <span 
-                                    key={cid} 
-                                    style={{ 
-                                      background: 'var(--accent-blue-alpha)', 
-                                      padding: '2px 6px', 
-                                      borderRadius: '4px', 
-                                      fontSize: '11px',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '4px'
-                                    }}
-                                  >
-                                    {model.basicEvents.find(be => be.id === cid)?.name || cid}
+                                {rule.condition.map(cid => {
+                                  const foundBe = model.basicEvents.find(be => be.id === cid || be.eventId === cid);
+                                  return (
                                     <span 
-                                      style={{ cursor: 'pointer', opacity: 0.6 }} 
-                                      onClick={() => handleToggleCondition(group.id, rule.id, cid)}
-                                    >×</span>
-                                  </span>
-                                ))}
-                                <select
-                                  className="form-select"
-                                  value=""
-                                  onChange={(e) => {
-                                    if (e.target.value) handleToggleCondition(group.id, rule.id, e.target.value);
-                                  }}
-                                  style={{ width: '110px', padding: '2px 4px', fontSize: '11px', border: '1px dashed var(--border-default)', background: 'transparent' }}
-                                >
-                                  <option value="">+ {locale === 'ja' ? '事象を追加' : 'Add Event'}</option>
-                                  {model.basicEvents
-                                    .filter(be => !rule.condition.includes(be.id))
-                                    .map(be => (
-                                      <option key={be.id} value={be.id}>{be.name}</option>
-                                    ))
-                                  }
-                                </select>
+                                      key={cid} 
+                                      style={{ 
+                                        background: 'var(--accent-blue-alpha)', 
+                                        padding: '2px 6px', 
+                                        borderRadius: '4px', 
+                                        fontSize: '11px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}
+                                    >
+                                      {foundBe ? `[${foundBe.eventId || foundBe.id}] ${foundBe.name}` : cid}
+                                      <span 
+                                        style={{ cursor: 'pointer', opacity: 0.6, marginLeft: '4px' }} 
+                                        onClick={() => handleToggleCondition(group.id, rule.id, cid)}
+                                      >×</span>
+                                    </span>
+                                  );
+                                })}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <input
+                                    list={`event-list-rec-cond-${rule.id}`}
+                                    className="form-input form-input--mono"
+                                    placeholder={locale === 'ja' ? 'ID入力/選択...' : 'Enter/select ID...'}
+                                    value={newCondInput[rule.id] || ''}
+                                    onChange={(e) => setNewCondInput(prev => ({ ...prev, [rule.id]: e.target.value }))}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        const val = (newCondInput[rule.id] || '').trim();
+                                        if (val) {
+                                          handleToggleCondition(group.id, rule.id, val);
+                                          setNewCondInput(prev => ({ ...prev, [rule.id]: '' }));
+                                        }
+                                      }
+                                    }}
+                                    style={{ width: '120px', padding: '2px 4px', fontSize: '11px', border: '1px dashed var(--border-default)', background: 'transparent' }}
+                                  />
+                                  <datalist id={`event-list-rec-cond-${rule.id}`}>
+                                    {model.basicEvents.map(be => (
+                                      <option key={be.id} value={be.eventId || be.id}>
+                                        {be.eventId ? `[${be.eventId}] ${be.name}` : be.name}
+                                      </option>
+                                    ))}
+                                  </datalist>
+                                  <button
+                                    type="button"
+                                    className="btn btn--secondary btn--sm"
+                                    onClick={() => {
+                                      const val = (newCondInput[rule.id] || '').trim();
+                                      if (val) {
+                                        handleToggleCondition(group.id, rule.id, val);
+                                        setNewCondInput(prev => ({ ...prev, [rule.id]: '' }));
+                                      }
+                                    }}
+                                    style={{ padding: '2px 6px', fontSize: '10px', height: '22px' }}
+                                  >
+                                    +
+                                  </button>
+                                </div>
                               </div>
                             </td>
                             <td style={{ padding: '4px' }}>
@@ -290,17 +319,31 @@ export default function RecoveryRuleTable({ locale = 'ja', highlightedId }: Reco
                             </td>
                             <td style={{ padding: '4px' }}>
                               {rule.action !== 'remove' && rule.action !== 'set_probability' ? (
-                                <select
-                                  className="form-select"
-                                  value={rule.targetEventId || ''}
-                                  onChange={(e) => handleUpdateRule(group.id, rule.id, { targetEventId: e.target.value })}
-                                  style={{ background: 'transparent', border: 'none', padding: '2px 4px', fontSize: '11px', width: '100%' }}
-                                >
-                                  <option value="">{locale === 'ja' ? '未選択' : 'None'}</option>
-                                  {model.basicEvents.map(be => (
-                                    <option key={be.id} value={be.id}>{be.name}</option>
-                                  ))}
-                                </select>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <input
+                                    list={`event-list-rec-target-${rule.id}`}
+                                    className="form-input form-input--mono"
+                                    value={rule.targetEventId || ''}
+                                    onChange={(e) => handleUpdateRule(group.id, rule.id, { targetEventId: e.target.value })}
+                                    placeholder={locale === 'ja' ? 'ID直接入力または選択...' : 'Type or select ID...'}
+                                    style={{ padding: '2px 6px', fontSize: '11px', width: '100%', background: 'transparent', border: 'none' }}
+                                  />
+                                  <datalist id={`event-list-rec-target-${rule.id}`}>
+                                    {model.basicEvents.map(be => (
+                                      <option key={be.id} value={be.eventId || be.id}>
+                                        {be.eventId ? `[${be.eventId}] ${be.name}` : be.name}
+                                      </option>
+                                    ))}
+                                  </datalist>
+                                  {(() => {
+                                    const foundBe = model.basicEvents.find(be => be.eventId === rule.targetEventId || be.id === rule.targetEventId);
+                                    return foundBe ? (
+                                      <span style={{ fontSize: '10px', color: 'var(--text-secondary)', paddingLeft: '4px' }}>
+                                        🏷️ {foundBe.name}
+                                      </span>
+                                    ) : null;
+                                  })()}
+                                </div>
                               ) : (
                                 <span style={{ color: 'var(--text-muted)', fontSize: '11px', paddingLeft: '8px' }}>N/A</span>
                               )}

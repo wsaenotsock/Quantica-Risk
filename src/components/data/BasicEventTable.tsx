@@ -108,6 +108,7 @@ export default function BasicEventTable({ locale = 'ja', highlightedId, onNaviga
       be.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
       be.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (be.eventId && be.eventId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (be.failureMode && be.failureMode.toLowerCase().includes(searchTerm.toLowerCase())) ||
       be.tags.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()))
     ).map(be => ({
       ...be,
@@ -160,6 +161,7 @@ export default function BasicEventTable({ locale = 'ja', highlightedId, onNaviga
               <th style={{ cursor: 'pointer' }} onClick={() => requestSort('id')}>ID{getSortIcon('id')}</th>
               <th style={{ cursor: 'pointer' }} onClick={() => requestSort('eventId')}>{locale === 'ja' ? '基事象ID' : 'Event ID'}{getSortIcon('eventId')}</th>
               <th style={{ cursor: 'pointer' }} onClick={() => requestSort('name')}>{locale === 'ja' ? '名前' : 'Name'}{getSortIcon('name')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={() => requestSort('failureMode')}>{locale === 'ja' ? '故障モード' : 'Failure Mode'}{getSortIcon('failureMode')}</th>
               <th style={{ cursor: 'pointer' }} onClick={() => requestSort('tags')}>{locale === 'ja' ? 'タグ' : 'Tags'}{getSortIcon('tags')}</th>
               <th>{locale === 'ja' ? '参照パラメータ' : 'Parameter'}</th>
               <th style={{ cursor: 'pointer' }} onClick={() => requestSort('failureType')}>{locale === 'ja' ? 'タイプ' : 'Type'}{getSortIcon('failureType')}</th>
@@ -202,6 +204,19 @@ export default function BasicEventTable({ locale = 'ja', highlightedId, onNaviga
                     allEvents={model.basicEvents} 
                     onUpdate={(newName) => updateBasicEvent({ ...be, name: newName })} 
                     locale={locale}
+                  />
+                </td>
+                <td>
+                  <input
+                    className="form-input"
+                    style={{ padding: '4px 8px', fontSize: '11px', background: 'transparent', width: '100px' }}
+                    value={be.failureMode || ''}
+                    placeholder={
+                      be.parameterId
+                        ? (model.parameters?.find(p => p.id === be.parameterId)?.name || '')
+                        : (locale === 'ja' ? '例: 開失敗' : 'e.g. Fail to open')
+                    }
+                    onChange={(e) => updateBasicEvent({ ...be, failureMode: e.target.value })}
                   />
                 </td>
                 <td>
@@ -443,7 +458,7 @@ export default function BasicEventTable({ locale = 'ja', highlightedId, onNaviga
             ))}
             {filteredEvents.length === 0 && (
               <tr>
-                <td colSpan={12} style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--text-tertiary)' }}>
+                <td colSpan={13} style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--text-tertiary)' }}>
                   {locale === 'ja' ? 'データがありません' : 'No data available'}
                 </td>
               </tr>
